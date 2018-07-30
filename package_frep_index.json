@@ -120,7 +120,7 @@
           "version": "0.1.0",
           "archiveFileName": "frep-samd-0.1.0.zip",
           "checksum": "SHA-256:e8c36247104627531dbc966b2bc797383066714bdd463a76b0de9ac78f2ee5b2",
-		  "url": "file://C:/Users/Pascal Frehner/Documents/ws/arduino-board-index/boards/frep-samd-0.1.0.zip",
+		  "url": "https://raw.github.com/frep/arduino-board-index/master/boards/frep-samd-0.1.0.zip",
           "toolsDependencies": [],
           "size": "1542484"
         }
