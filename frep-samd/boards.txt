@@ -1,0 +1,47 @@
+# Copyright (c) 2014-2015 Arduino LLC.  All right reserved.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See the GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+menu.cache=Cache
+
+# SWITCHM0D
+# ---------
+frep_switchM0D.name=switchM0D
+frep_switchM0D.vid.0=0x239A
+frep_switchM0D.pid.0=0x801E
+frep_switchM0D.vid.1=0x239A
+frep_switchM0D.pid.1=0x001E
+frep_switchM0D.upload.tool=bossac
+frep_switchM0D.upload.protocol=sam-ba
+frep_switchM0D.upload.maximum_size=262144
+frep_switchM0D.upload.offset=0x2000
+frep_switchM0D.upload.use_1200bps_touch=true
+frep_switchM0D.upload.wait_for_upload_port=true
+frep_switchM0D.upload.native_usb=true
+frep_switchM0D.build.mcu=cortex-m0plus
+frep_switchM0D.build.f_cpu=48000000L
+frep_switchM0D.build.usb_product="Trinket M0"
+frep_switchM0D.build.usb_manufacturer="Adafruit"
+frep_switchM0D.build.board=TRINKET_M0
+frep_switchM0D.build.core=arduino
+frep_switchM0D.build.extra_flags=-DCRYSTALLESS -D__SAMD21G18A__ -DARM_MATH_CM0PLUS {build.usb_flags}
+frep_switchM0D.build.ldscript=linker_scripts/gcc/flash_with_bootloader.ld
+frep_switchM0D.build.openocdscript=openocd_scripts/switchM0D.cfg
+frep_switchM0D.build.variant=switchM0D
+frep_switchM0D.build.variant_system_lib=
+frep_switchM0D.build.vid=0x239A
+frep_switchM0D.build.pid=0x801E
+frep_switchM0D.bootloader.tool=openocd
+frep_switchM0D.bootloader.file=switchM0D/bootloader_uf2.bin
