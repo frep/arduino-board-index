@@ -14,142 +14,207 @@ Circuits At Home, LTD
 Web      :  http://www.circuitsathome.com
 e-mail   :  support@circuitsathome.com
 */
+
 /* USB functions */
 
-#include <stdio.h>
 #include "Arduino.h"
 #include "Usb.h"
-
-
-//#ifdef ARDUINO_SAMD_ZERO
+#include <stdio.h>
 
 static uint32_t usb_error = 0;
 static uint32_t usb_task_state = USB_DETACHED_SUBSTATE_INITIALIZE;
 
-/* constructor */
-USBHost::USBHost() : bmHubPre(0) {
+/**
+ * \brief USBHost class constructor.
+ */
+USBHost::USBHost() : bmHubPre(0)
+{
 	// Set up state machine
-	usb_task_state = USB_DETACHED_SUBSTATE_INITIALIZE; //set up state machine
-}
+	usb_task_state = USB_DETACHED_SUBSTATE_INITIALIZE;
 
-/* Initialize data structures */
-uint32_t USBHost::Init() {
-	//devConfigIndex	= 0;
 	// Init host stack
-	bmHubPre		= 0;
-	UHD_Init();
-	return 0;
+	init();
 }
 
-uint32_t USBHost::getUsbTaskState(void) {
+/**
+ * \brief Initialize USBHost class.
+ */
+void USBHost::init()
+{
+	devConfigIndex	= 0;
+	bmHubPre		= 0;
+}
+
+
+/**
+ * \brief Get USBHost state.
+ *
+ * \return USB enumeration status (see USBHost::task).
+ */
+uint32_t USBHost::getUsbTaskState(void)
+{
     return (usb_task_state);
 }
 
-void USBHost::setUsbTaskState(uint32_t state) {
+/**
+ * \brief Set USB state.
+ *
+ * \param state New USBHost status to be set.
+ */
+void USBHost::setUsbTaskState(uint32_t state)
+{
     usb_task_state = state;
 }
 
-EpInfo* USBHost::getEpInfoEntry(uint32_t addr, uint32_t ep) {
-	UsbDeviceDefinition *p = addrPool.GetUsbDevicePtr(addr);
+/**
+ * \brief Get endpoint info from USB device address and device endpoint.
+ *
+ * \note This function should be used to know which host pipe is being used for
+ * the corresponding device endpoint.
+ *
+ * \param addr USB device address.
+ * \param ep USB device endpoint number.
+ *
+ * \return Pointer to an EpInfo structure.
+ */
+EpInfo* USBHost::getEpInfoEntry(uint32_t addr, uint32_t ep)
+{
+	UsbDevice *p = addrPool.GetUsbDevicePtr(addr);
 
-	if(!p || !p->epinfo)
+	if (!p || !p->epinfo)
 		return NULL;
 
 	EpInfo *pep = p->epinfo;
 
-	for (uint32_t i = 0; i < p->epcount; i++) {
-		if(pep->epAddr == ep)
+	for (uint32_t i = 0; i < p->epcount; i++)
+	{
+		if (pep->deviceEpNum == ep)
 			return pep;
 
 		pep++;
 	}
+
 	return NULL;
 }
 
-/* set device table entry */
-
-/* each device is different and has different number of endpoints. This function plugs endpoint record structure, defined in application, to devtable */
-uint32_t USBHost::setEpInfoEntry(uint32_t addr, uint32_t epcount, EpInfo* eprecord_ptr) {
+/**
+ * \brief Set device endpoint entry.
+ *
+ * \note Each device is different and has a different number of endpoints.
+ * This function sets endpoint record structure to the device using address
+ * addr in the address pool.
+ *
+ * \param ul_pipe Pipe address.
+ * \param ul_token_type Token type.
+ *
+ * \retval 0 on success.
+ * \retval USB_ERROR_ADDRESS_NOT_FOUND_IN_POOL device not found.
+ */
+uint32_t USBHost::setEpInfoEntry(uint32_t addr, uint32_t epcount, EpInfo* eprecord_ptr)
+{
 	if (!eprecord_ptr)
 		return USB_ERROR_INVALID_ARGUMENT;
 
-	UsbDeviceDefinition *p = addrPool.GetUsbDevicePtr(addr);
+	UsbDevice *p = addrPool.GetUsbDevicePtr(addr);
 
-	if(!p)
+	if (!p)
 		return USB_ERROR_ADDRESS_NOT_FOUND_IN_POOL;
 
-        p->address.devAddress = addr;
+	p->address	= addr;
 	p->epinfo	= eprecord_ptr;
 	p->epcount	= epcount;
 
 	return 0;
 }
 
-uint32_t USBHost::SetPipeAddress(uint32_t addr, uint32_t ep, EpInfo **ppep, uint32_t &nak_limit) {
-	UsbDeviceDefinition *p = addrPool.GetUsbDevicePtr(addr);
+/**
+ * \brief Set host pipe target address and set ppep pointer to the endpoint
+ * structure matching the specified USB device address and endpoint.
+ *
+ * \param addr USB device address.
+ * \param ep USB device endpoint number.
+ * \param ppep Endpoint info structure pointer set by setPipeAddress.
+ * \param nak_limit Maximum number of NAK permitted.
+ *
+ * \retval 0 on success.
+ * \retval USB_ERROR_ADDRESS_NOT_FOUND_IN_POOL device not found.
+ * \retval USB_ERROR_EPINFO_IS_NULL no endpoint structure found for this device.
+ * \retval USB_ERROR_EP_NOT_FOUND_IN_TBL the specified device endpoint cannot be found.
+ */
+uint32_t USBHost::setPipeAddress(uint32_t addr, uint32_t ep, EpInfo **ppep, uint32_t &nak_limit)
+{
+	UsbDevice *p = addrPool.GetUsbDevicePtr(addr);
 
-	if(!p)
+	if (!p)
 		return USB_ERROR_ADDRESS_NOT_FOUND_IN_POOL;
 
- 	if(!p->epinfo)
+ 	if (!p->epinfo)
 		return USB_ERROR_EPINFO_IS_NULL;
 
 	*ppep = getEpInfoEntry(addr, ep);
 
-	if(!*ppep)
+	if (!*ppep)
 		return USB_ERROR_EP_NOT_FOUND_IN_TBL;
 
 	nak_limit = (0x0001UL << (((*ppep)->bmNakPower > USB_NAK_MAX_POWER ) ? USB_NAK_MAX_POWER : (*ppep)->bmNakPower));
 	nak_limit--;
-	TRACE_USBHOST(printf("     => SetPipeAddress deviceEP=%lu configued as hostPIPE=%lu sending to address=%lu\r\n", ep, (*ppep)->epAddr, addr);)
-	/*
-          USBTRACE2("\r\nAddress: ", addr);
-          USBTRACE2(" EP: ", ep);
-          USBTRACE2(" NAK Power: ",(*ppep)->bmNakPower);
-          USBTRACE2(" NAK Limit: ", nak_limit);
-          USBTRACE("\r\n");
-         */
 
-	// CTRL_PIPE.PDADDR: usb_pipe_table[pipe_num].HostDescBank[0].CTRL_PIPE.bit.PDADDR = addr
-	uhd_configure_address((*ppep)->epAddr, addr); 	// Set peripheral address
+	// Set peripheral address
+	TRACE_USBHOST(printf("     => SetAddress deviceEP=%lu configued as hostPIPE=%lu sending to address=%lu\r\n", ep, (*ppep)->hostPipeNum, addr);)
+	uhd_configure_address((*ppep)->hostPipeNum, addr);
 
 	return 0;
 }
 
-/* Control transfer. Sets address, endpoint, fills control packet with necessary data, dispatches control packet, and initiates bulk IN transfer,   */
-/* depending on request. Actual requests are defined as inlines                                                                                      */
-/* return codes:                */
-/* 00       =   success         */
-/* 01-0f    =   non-zero HRSLT  */
-uint32_t USBHost::ctrlReq(uint32_t addr, uint32_t ep, uint8_t bmReqType, uint8_t bRequest, uint8_t wValLo, uint8_t wValHi,
-                          uint16_t wInd, uint16_t total, uint32_t nbytes, uint8_t* dataptr, USBReadParser *p) {
-	
-	uint32_t direction = 0; // Request direction, IN or OUT
-	uint32_t rcode;
+/**
+ * \brief Send a control request.
+ * Sets address, endpoint, fills control packet with necessary data, dispatches
+ * control packet, and initiates bulk IN transfer depending on request.
+ *
+ * \param addr USB device address.
+ * \param ep USB device endpoint number.
+ * \param bmReqType Request direction.
+ * \param bRequest Request type.
+ * \param wValLo Value low.
+ * \param wValHi Value high.
+ * \param wInd Index field.
+ * \param total Request length.
+ * \param nbytes Number of bytes to read.
+ * \param dataptr Data pointer.
+ * \param p USB class reader.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::ctrlReq(uint32_t addr, uint32_t ep, uint8_t bmReqType, uint8_t bRequest, uint8_t wValLo, uint8_t wValHi, uint16_t wInd, uint16_t total, uint32_t nbytes, uint8_t* dataptr, USBReadParser *p)
+{
+	// Request direction, IN or OUT
+	uint32_t direction = 0;
+	uint32_t rcode = 0;
 	SETUP_PKT setup_pkt;
 
-	EpInfo *pep = NULL;
-	uint32_t nak_limit = 0;
+	EpInfo *pep = 0;
+	uint32_t nak_limit;
 
 	TRACE_USBHOST(printf("    => ctrlReq\r\n");)
 
-	rcode = SetPipeAddress(addr, ep, &pep, nak_limit);
-	if(rcode)
+	// Set peripheral address
+	rcode = setPipeAddress(addr, ep, &pep, nak_limit);
+	if (rcode)
 		return rcode;
 
 	// Allocate Pipe0 with default 64 bytes size if not already initialized
+	// TODO : perform a get device descriptor first to get device endpoint size (else data can be missed if device ep0 > host pipe0)
 	rcode = UHD_Pipe0_Alloc(0, 64);
 	if (rcode)
 	{
 		TRACE_USBHOST(printf("/!\\ USBHost::ctrlReq : EP0 allocation error: %lu\r\n", rcode);)
-		//USBTRACE2("\n\rUSBHost::ctrlReq : EP0 allocation error: ", rcode");
-		return rcode;
+		return (rcode);
 	}
 
 	// Determine request direction
 	direction = ((bmReqType & 0x80 ) > 0);
 
-	/* fill in setup packet */
+	// Fill in setup packet
     setup_pkt.ReqType_u.bmRequestType	= bmReqType;
     setup_pkt.bRequest					= bRequest;
     setup_pkt.wVal_u.wValueLo			= wValLo;
@@ -157,342 +222,530 @@ uint32_t USBHost::ctrlReq(uint32_t addr, uint32_t ep, uint8_t bmReqType, uint8_t
     setup_pkt.wIndex					= wInd;
     setup_pkt.wLength					= total;
 
-	UHD_Pipe_Write(pep->epAddr, sizeof(setup_pkt), (uint8_t *)&setup_pkt); //transfer to setup packet FIFO
+	// Configure and write the setup packet into the FIFO
+	uhd_configure_pipe_token(0, tokSETUP);
+	UHD_Pipe_Write(pep->hostPipeNum, 8, (uint8_t *)&setup_pkt);
 
-	rcode = dispatchPkt(tokSETUP, ep, nak_limit); // Dispatch packet
-
-	if (rcode) //return HRSLT if not zero
-		return ( rcode);
-
-	if (dataptr != NULL) //data stage, if present
+	// Dispatch packet
+	rcode = dispatchPkt(tokSETUP, pep->hostPipeNum, nak_limit);
+	if (rcode)
 	{
-		if (direction) // IN transfer
+		// Return HRSLT if not zero
+		TRACE_USBHOST(printf("/!\\ USBHost::ctrlReq : Setup packet error: %lu\r\n", rcode);)
+		return (rcode);
+	}
+
+	// Data stage (if present)
+	if (dataptr != 0)
+	{
+		if (direction)
 		{
-			uint32_t left = total;
+			// IN transfer
 			TRACE_USBHOST(printf("    => ctrlData IN\r\n");)
+			uint32_t left = total;
 
-			pep->bmRcvToggle = 1; //bmRCVTOG1;
+			while (left)
+			{
+				// Bytes read into buffer
+				uint32_t read = nbytes;
 
-			// Bytes read into buffer
-			uint32_t read = nbytes;
+				rcode = InTransfer(pep, nak_limit, &read, dataptr);
+				if (rcode)
+					return rcode;
 
-			rcode = InTransfer(pep, nak_limit, (uint8_t*)&read, dataptr);
+				// Invoke callback function if inTransfer completed successfuly and callback function pointer is specified
+				if (!rcode && p)
+					((USBReadParser*)p)->Parse(read, dataptr, total - left);
 
-			if((rcode&USB_ERROR_DATATOGGLE) == USB_ERROR_DATATOGGLE) {
-						// yes, we flip it wrong here so that next time it is actually correct!
-						//pep->bmRcvToggle = (regRd(rHRSL) & bmSNDTOGRD) ? 0 : 1;
-						pep->bmRcvToggle = USB_HOST_DTGL(pep->epAddr);
-						//continue;
+				left -= read;
+
+				if (read < nbytes)
+					break;
 			}
-
-			if(rcode) {
-				//USBTRACE2("\n\rUSBHost::ctrlReq : in transfer: ", rcode");
-				return rcode;
-			}
-			// Invoke callback function if inTransfer completed successfully and callback function pointer is specified
-			if(!rcode && p)
-				((USBReadParser*)p)->Parse(read, dataptr, total - left);
 		}
-		else // OUT transfer
-		{			
-			pep->bmSndToggle = 1; //bmSNDTOG1;
+		else
+		{
+			// OUT transfer
+			TRACE_USBHOST(printf("    => ctrlData OUT\r\n");)
 			rcode = OutTransfer(pep, nak_limit, nbytes, dataptr);
 		}
-		if(rcode) //return error
+
+		if (rcode)
+		{
+			TRACE_USBHOST(printf("/!\\ USBHost::ctrlData : Data packet error: %lu\r\n", rcode);)
 			return (rcode);
+		}
 	}
-	
+
 	// Status stage
-	UHD_Pipe_CountZero(pep->epAddr);
-	USB->HOST.HostPipe[pep->epAddr].PSTATUSSET.reg = USB_HOST_PSTATUSSET_DTGL;
-	return dispatchPkt((direction) ? tokOUTHS : tokINHS, pep->epAddr, nak_limit); //GET if direction
+	return dispatchPkt((direction) ? tokOUTHS : tokINHS, pep->hostPipeNum, nak_limit);
 }
 
-/* IN transfer to arbitrary endpoint. Assumes PERADDR is set. Handles multiple packets if necessary. Transfers 'nbytes' bytes. */
-/* Keep sending INs and writes data to memory area pointed by 'data'                                                           */
-
-/* rcode 0 if no errors. rcode 01-0f is relayed from dispatchPkt(). Rcode f0 means RCVDAVIRQ error,
-            fe USB xfer timeout */
-uint32_t USBHost::inTransfer(uint32_t addr, uint32_t ep, uint8_t *nbytesptr, uint8_t* data) {
+/**
+ * \brief Perform IN request to the specified USB device.
+ *
+ * \note This function handles multiple packets (if necessary) and can
+ * receive a maximum of 'nbytesptr' bytes. It keep sending INs and writes data
+ * to memory area pointed by 'data'. The actual amount of received bytes is
+ * stored in 'nbytesptr'.
+ *
+ * \param addr USB device address.
+ * \param ep USB device endpoint number.
+ * \param nbytesptr Receive buffer size. It is set to the amount of received
+ * bytes when the function returns.
+ * \param data Buffer to store received data.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+ uint32_t USBHost::inTransfer(uint32_t addr, uint32_t ep, uint32_t *nbytesptr, uint8_t* data)
+{
 	EpInfo *pep = NULL;
 	uint32_t nak_limit = 0;
 
-	uint32_t rcode = SetPipeAddress(addr, ep, &pep, nak_limit);
+	uint32_t rcode = setPipeAddress(addr, ep, &pep, nak_limit);
 
-        if(rcode) {
-                USBTRACE3("(USB::InTransfer) SetAddress Failed ", rcode, 0x81);
-                USBTRACE3("(USB::InTransfer) addr requested ", addr, 0x81);
-                USBTRACE3("(USB::InTransfer) ep requested ", ep, 0x81);
-                return rcode;
-        }
+	if (rcode)
+	{
+		return rcode;
+	}
+
 	return InTransfer(pep, nak_limit, nbytesptr, data);
 }
 
-uint32_t USBHost::InTransfer(EpInfo *pep, uint32_t nak_limit, uint8_t *nbytesptr, uint8_t* data) {
+uint32_t USBHost::InTransfer(EpInfo *pep, uint32_t nak_limit, uint32_t *nbytesptr, uint8_t* data)
+{
 	uint32_t rcode = 0;
 	uint32_t pktsize = 0;
-
 	uint32_t nbytes = *nbytesptr;
 	uint32_t maxpktsize = pep->maxPktSize;
 
 	*nbytesptr = 0;
-	//set toggle value
-	if(pep->bmRcvToggle)
-		USB->HOST.HostPipe[pep->epAddr].PSTATUSSET.reg = USB_HOST_PSTATUSSET_DTGL;
-	else
-		USB->HOST.HostPipe[pep->epAddr].PSTATUSCLR.reg = USB_HOST_PSTATUSCLR_DTGL;
 
-	usb_pipe_table[pep->epAddr].HostDescBank[0].ADDR.reg = (uint32_t)data;
-
-	// use a 'break' to exit this loop
-	while (1) {
-   		/* get pipe config from setting register */
- 		usb_pipe_table[pep->epAddr].HostDescBank[0].ADDR.reg += pktsize;
-
-		rcode = dispatchPkt(tokIN, pep->epAddr, nak_limit); //IN packet to EP-'endpoint'. Function takes care of NAKS.
-		if(rcode == USB_ERROR_DATATOGGLE) {
-            // yes, we flip it wrong here so that next time it is actually correct!
-            //pep->bmRcvToggle = (regRd(rHRSL) & bmSNDTOGRD) ? 0 : 1;
-			pep->bmRcvToggle = USB_HOST_DTGL(pep->epAddr);
-            //set toggle value
-			if(pep->bmRcvToggle)
-				USB->HOST.HostPipe[pep->epAddr].PSTATUSSET.reg = USB_HOST_PSTATUSSET_DTGL;
-			else
-				USB->HOST.HostPipe[pep->epAddr].PSTATUSCLR.reg = USB_HOST_PSTATUSCLR_DTGL;
-            continue;
-		}
-        if(rcode) {
-                uhd_freeze_pipe(pep->epAddr);
-                //printf(">>>>>>>> Problem! dispatchPkt %2.2x\r\n", rcode);
-                return(rcode);// break; //should be 0, indicating ACK. Else return error code.
+    while (1)
+	{
+		// Use a 'return' to exit this loop
+		// IN packet to EP-'endpoint'. Function takes care of NAKS.
+        rcode = dispatchPkt(tokIN, pep->hostPipeNum, nak_limit);
+        if (rcode)
+		{
+			if (rcode == 1)
+			{
+				// Pipe freeze is mandatory to avoid sending IN endlessly (else reception becomes messy then)
+				uhd_freeze_pipe(pep->hostPipeNum);
+			}
+			// Should be 1, indicating NAK. Else return error code.
+            return rcode;
         }
-        /* check for RCVDAVIRQ and generate error if not present */
-        /* the only case when absence of RCVDAVIRQ makes sense is when toggle error occurred. Need to add handling for that */
-				
-		pktsize = uhd_byte_count(pep->epAddr); // Number of received bytes
-		
-		USB->HOST.HostPipe[pep->epAddr].PSTATUSCLR.reg = USB_HOST_PSTATUSCLR_BK0RDY;
-        
-		//printf("Got %i bytes \r\n", pktsize);
-		// This would be OK, but...
-		//assert(pktsize <= nbytes);
-		if(pktsize > nbytes) {
-			// This can happen. Use of assert on Arduino locks up the Arduino.
-			// So I will trim the value, and hope for the best.
-			//printf(">>>>>>>> Problem! Wanted %i bytes but got %i.\r\n", nbytes, pktsize);
-			pktsize = nbytes;
+
+		// Number of received bytes
+		pktsize = uhd_byte_count(pep->hostPipeNum);
+		if (nbytes < pktsize)
+		{
+			TRACE_USBHOST(printf("/!\\ USBHost::InTransfer : receive buffer is too small, size=%lu, expected=%lu\r\n", nbytes, pktsize);)
 		}
+        data += UHD_Pipe_Read(pep->hostPipeNum, pktsize, data);
 
-		int16_t mem_left = (int16_t)nbytes - *((int16_t*)nbytesptr);
+		// Add this packet's byte count to total transfer length
+        *nbytesptr += pktsize;
 
-		if(mem_left < 0)
-			mem_left = 0;
-
-        //data = bytesRd(rRCVFIFO, ((pktsize > mem_left) ? mem_left : pktsize), data);
-
-        //regWr(rHIRQ, bmRCVDAVIRQ); // Clear the IRQ & free the buffer
-        *nbytesptr += pktsize;// add this packet's byte count to total transfer length
-
-        /* The transfer is complete under two conditions:           */
-        /* 1. The device sent a short packet (L.T. maxPacketSize)   */
-        /* 2. 'nbytes' have been transferred.                       */
-        if((pktsize < maxpktsize) || (*nbytesptr >= nbytes)) // have we transferred 'nbytes' bytes?
-		{					 
-            // Save toggle value
-            pep->bmRcvToggle = USB_HOST_DTGL(pep->epAddr);
-            //printf("\r\n");
-            rcode = 0;
-            break;
-		} // if
-	} //while( 1 )
-	uhd_freeze_pipe(pep->epAddr);
-	return ( rcode);
+        // The transfer is complete under two conditions:
+        // 1. The device sent a short packet (L.T. maxPacketSize)
+        // 2. 'nbytes' have been transferred.
+        if ((pktsize < maxpktsize) || (*nbytesptr >= nbytes))
+		{
+            return 0;
+        }
+	}
 }
 
-/* OUT transfer to arbitrary endpoint. Handles multiple packets if necessary. Transfers 'nbytes' bytes. */
-/* Handles NAK bug per Maxim Application Note 4000 for single buffer transfer   */
-
-/* rcode 0 if no errors. rcode 01-0f is relayed from HRSL                       */
-uint32_t USBHost::outTransfer(uint32_t addr, uint32_t ep, uint32_t nbytes, uint8_t* data) {
+/**
+ * \brief Perform OUT request to the specified USB device.
+ *
+ * \note This function handles multiple packets (if necessary) and sends
+ * 'nbytes' bytes.
+ *
+ * \param addr USB device address.
+ * \param ep USB device endpoint number.
+ * \param nbytes Buffer size to be sent.
+ * \param data Buffer to send.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::outTransfer(uint32_t addr, uint32_t ep, uint32_t nbytes, uint8_t* data)
+{
 	EpInfo *pep = NULL;
 	uint32_t nak_limit = 0;
 
-	uint32_t rcode = SetPipeAddress(addr, ep, &pep, nak_limit);
+	uint32_t rcode = setPipeAddress(addr, ep, &pep, nak_limit);
 
-	if(rcode)
+	if (rcode)
+	{
 		return rcode;
+	}
 
 	return OutTransfer(pep, nak_limit, nbytes, data);
 }
 
-uint32_t USBHost::OutTransfer(EpInfo *pep, uint32_t nak_limit, uint32_t nbytes, uint8_t *data) {
-	uint32_t rcode = 0, retry_count;
-	uint8_t *data_p = data; //local copy of the data pointer
-	uint32_t bytes_tosend, nak_count;
+uint32_t USBHost::OutTransfer(EpInfo *pep, uint32_t nak_limit, uint32_t nbytes, uint8_t *data)
+{
+	uint32_t rcode = 0;
+	uint32_t bytes_tosend = 0;
 	uint32_t bytes_left = nbytes;
-	uint8_t buf[64];
-	uint8_t i;
-
 	uint32_t maxpktsize = pep->maxPktSize;
 
-    if(maxpktsize < 1 || maxpktsize > 64)
+	if (maxpktsize < 1)
 		return USB_ERROR_INVALID_MAX_PKT_SIZE;
 
-	for( i=0; i<nbytes; i++) {
-		buf[i] = data[i];
-	}
-	//unsigned long timeout = millis() + USB_XFER_TIMEOUT;
-
-	//set toggle value
-	if(pep->bmSndToggle)
-		USB->HOST.HostPipe[pep->epAddr].PSTATUSSET.reg = USB_HOST_PSTATUSSET_DTGL;
-	else
-		USB->HOST.HostPipe[pep->epAddr].PSTATUSCLR.reg = USB_HOST_PSTATUSCLR_DTGL;
-
-	while(bytes_left) {
-		retry_count = 0;
-		nak_count = 0;
+	while (bytes_left)
+	{
 		bytes_tosend = (bytes_left >= maxpktsize) ? maxpktsize : bytes_left;
-		UHD_Pipe_Write(pep->epAddr, bytes_tosend, buf); //filling output FIFO
 
-		//set number of bytes
-		//dispatch packet
-		//wait for the completion IRQ
-		//clear IRQ
+		// Write FIFO
+		UHD_Pipe_Write(pep->hostPipeNum, bytes_tosend, data);
 
-		rcode = dispatchPkt(tokOUT, pep->epAddr, nak_limit);
+		// Use a 'return' to exit this loop
+		// OUT packet to EP-'endpoint'. Function takes care of NAKS.
+		rcode = dispatchPkt(tokOUT, pep->hostPipeNum, nak_limit);
 		if (rcode)
 		{
-			switch(rcode) {
-				case USB_ERRORFLOW:
-					nak_count++;
-					if(nak_limit && (nak_count == nak_limit))
-							goto breakout;
-					return ( rcode);
-					break;
-				case USB_ERRORTIMEOUT:
-					retry_count++;
-					if(retry_count == USB_RETRY_LIMIT)
-							goto breakout;
-					return ( rcode);
-					break;
-				case USB_ERROR_DATATOGGLE:
-					// yes, we flip it wrong here so that next time it is actually correct!
-					pep->bmSndToggle = USB_HOST_DTGL(pep->epAddr);
-					//set toggle value
-					if(pep->bmSndToggle)
-						USB->HOST.HostPipe[pep->epAddr].PSTATUSSET.reg = USB_HOST_PSTATUSSET_DTGL;
-					else
-						USB->HOST.HostPipe[pep->epAddr].PSTATUSCLR.reg = USB_HOST_PSTATUSCLR_DTGL;
-					break;
-				default:
-						goto breakout;
-			}//switch( rcode
+			// Should be 0, indicating ACK. Else return error code.
+			return rcode;
 		}
 
 		bytes_left -= bytes_tosend;
-		data_p += bytes_tosend;
-    }//while( bytes_left...
-breakout:
+		data += bytes_tosend;
+	}
 
-    pep->bmSndToggle = USB_HOST_DTGL(pep->epAddr);
-    return ( rcode); //should be 0 in all cases
+	// Should be 0 in all cases
+	return rcode;
 }
 
-/* dispatch USB packet. Assumes peripheral address is set and relevant buffer is loaded/empty       */
-/* If NAK, tries to re-send up to nak_limit times                                                   */
-/* If nak_limit == 0, do not count NAKs, exit after timeout                                         */
-/* If bus timeout, re-sends up to USB_RETRY_LIMIT times                                             */
-
-/* return codes 0x00-0x0f are HRSLT( 0x00 being success ), 0xff means timeout                       */
-uint32_t USBHost::dispatchPkt(uint32_t token, uint32_t epAddr, uint32_t nak_limit) {
+/**
+ * \brief Dispatch USB packet.
+ *
+ * \note Ensure peripheral address is set and relevant buffer is loaded/empty.
+ * If NAK, tries to re-send up to nak_limit times.
+ * If nak_limit == 0, do not count NAKs, exit after timeout.
+ *
+ * \param token Token type (Setup, In or Out).
+ * \param hostPipeNum Host pipe number to use for sending USB packet.
+ * \param nak_limit Maximum number of NAK permitted.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::dispatchPkt(uint32_t token, uint32_t hostPipeNum, uint32_t nak_limit)
+{
 	uint32_t timeout = millis() + USB_XFER_TIMEOUT;
-	uint32_t nak_count = 0, retry_count=0;
+	uint32_t nak_count = 0;
 	uint32_t rcode = USB_ERROR_TRANSFER_TIMEOUT;
 
-	TRACE_USBHOST(printf("     => dispatchPkt token=%lu pipe=%lu nak_limit=%lu\r\n", token, epAddr, nak_limit);)
+	TRACE_USBHOST(printf("     => dispatchPkt token=%lu pipe=%lu nak_limit=%lu\r\n", token, hostPipeNum, nak_limit);)
 
-	UHD_Pipe_Send(epAddr, token); //launch the transfer
+	// Launch the transfer
+	UHD_Pipe_Send(hostPipeNum, token);
 
 	// Check timeout but don't hold timeout if VBUS is lost
 	while ((timeout > millis()) && (UHD_GetVBUSState() == UHD_STATE_CONNECTED))
 	{
 		// Wait for transfer completion
-		if (UHD_Pipe_Is_Transfer_Complete(epAddr, token))
+		if (UHD_Pipe_Is_Transfer_Complete(hostPipeNum, token))
 		{
 			return 0;
 		}
 
-		//case hrNAK:
-		if((USB->HOST.HostPipe[epAddr].PINTFLAG.reg & USB_HOST_PINTFLAG_TRFAIL) ) {
-			USB->HOST.HostPipe[epAddr].PINTFLAG.reg = USB_HOST_PINTFLAG_TRFAIL;
+		// Is NAK received?
+		if (Is_uhd_nak_received(hostPipeNum))
+		{
+			uhd_ack_nak_received(hostPipeNum);
 			nak_count++;
-			if(nak_limit && (nak_count == nak_limit)) {
-				rcode = USB_ERRORFLOW;
-				return (rcode);
-			}
-		}
 
-		//case hrNAK:
-		if( (usb_pipe_table[epAddr].HostDescBank[0].STATUS_BK.reg & USB_ERRORFLOW ) ) {
-			nak_count++;
-			if(nak_limit && (nak_count == nak_limit)) {
-				rcode = USB_ERRORFLOW;
-				return (rcode);
+			if (nak_limit && (nak_count == nak_limit))
+			{
+				// Return NAK
+				return 1;
 			}
-		}
-
-		//case hrTIMEOUT:
-		if(usb_pipe_table[epAddr].HostDescBank[0].STATUS_PIPE.reg & USB_ERRORTIMEOUT) {
-			retry_count++;
-			if(retry_count == USB_RETRY_LIMIT)	{
-				rcode = USB_ERRORTIMEOUT;
-				return (rcode);
-			}
-		}
-
-		if( (usb_pipe_table[epAddr].HostDescBank[0].STATUS_PIPE.reg & USB_ERROR_DATATOGGLE ) ) {
-			rcode = USB_ERROR_DATATOGGLE;
-			return (rcode);
 		}
 	}
 
 	return rcode;
 }
 
-/* USB main task. Performs enumeration/cleanup */
-void USBHost::Task(void) //USB state machine
+/**
+ * \brief Configure device using known device classes.
+ * The device get a new address even if its class remain unknown.
+ *
+ * \param parent USB device address of the device's parent (0 if root).
+ * \param port USB device base address (see AddressPoolImpl).
+ * \param lowspeed Device speed.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::Configuring(uint32_t parent, uint32_t port, uint32_t lowspeed)
+{
+	uint32_t rcode = 0;
+
+	for (; devConfigIndex < USB_NUMDEVICES; ++devConfigIndex)
+	{
+		if (!devConfig[devConfigIndex])
+			continue;
+
+		rcode = devConfig[devConfigIndex]->Init(parent, port, lowspeed);
+
+		if (!rcode)
+		{
+			TRACE_USBHOST(printf("USBHost::Configuring : found device class!\r\n");)
+			devConfigIndex = 0;
+			return 0;
+		}
+
+
+		if (rcode == USB_DEV_CONFIG_ERROR_DEVICE_NOT_SUPPORTED)
+		{
+			TRACE_USBHOST(printf("USBHost::Configuring : ERROR : device not supported!\r\n");)
+		}
+		else if (rcode == USB_ERROR_CLASS_INSTANCE_ALREADY_IN_USE)
+		{
+			TRACE_USBHOST(printf("USBHost::Configuring : ERROR : class instance already in use!\r\n");)
+		}
+		else
+		{
+			// in case of an error devConfigIndex should be reset to 0
+			// in order to start from the very beginning the next time
+			// the program gets here
+			if (rcode != USB_DEV_CONFIG_ERROR_DEVICE_INIT_INCOMPLETE)
+				devConfigIndex = 0;
+
+			return rcode;
+		}
+	}
+
+	// Device class is not supported by any of the registered classes
+	devConfigIndex = 0;
+
+	rcode = DefaultAddressing(parent, port, lowspeed);
+
+	return rcode;
+}
+
+/**
+ * \brief Configure device with unknown USB class.
+ *
+ * \param parent USB device address of the device's parent (0 if root).
+ * \param port USB device base address (see AddressPoolImpl).
+ * \param lowspeed Device speed.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::DefaultAddressing(uint32_t parent, uint32_t port, uint32_t lowspeed)
+{
+	uint32_t rcode = 0;
+	UsbDevice *p0 = 0, *p = 0;
+
+	// Get pointer to pseudo device with address 0 assigned
+	p0 = addrPool.GetUsbDevicePtr(0);
+
+	if (!p0)
+		return USB_ERROR_ADDRESS_NOT_FOUND_IN_POOL;
+
+	if (!p0->epinfo)
+		return USB_ERROR_EPINFO_IS_NULL;
+
+	p0->lowspeed = (lowspeed) ? 1 : 0;
+
+	// Allocate new address according to device class
+	uint32_t bAddress = addrPool.AllocAddress(parent, 0, port);
+
+	if (!bAddress)
+		return USB_ERROR_OUT_OF_ADDRESS_SPACE_IN_POOL;
+
+	p = addrPool.GetUsbDevicePtr(bAddress);
+
+	if (!p)
+		return USB_ERROR_ADDRESS_NOT_FOUND_IN_POOL;
+
+	p->lowspeed = lowspeed;
+
+	// Assign new address to the device
+	rcode = setAddr(0, 0, bAddress);
+
+	if (rcode)
+	{
+		TRACE_USBHOST(printf("/!\\ USBHost::DefaultAddressing : Set address failed with code: %lu\r\n", rcode);)
+		addrPool.FreeAddress(bAddress);
+		bAddress = 0;
+		return rcode;
+	}
+
+	return 0;
+}
+
+/**
+ * \brief Release device and free associated resources.
+ *
+ * \param addr USB device address.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::ReleaseDevice(uint32_t addr)
+{
+	if (!addr)
+		return 0;
+
+	for (uint32_t i = 0; i < USB_NUMDEVICES; ++i)
+	{
+		if (devConfig[i]->GetAddress() == addr)
+		{
+			return devConfig[i]->Release();
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * \brief Get device descriptor.
+ *
+ * \param addr USB device address.
+ * \param ep USB device endpoint number.
+ * \param nbytes Buffer size.
+ * \param dataptr Buffer to store received descriptor.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::getDevDescr(uint32_t addr, uint32_t ep, uint32_t nbytes, uint8_t* dataptr)
+{
+    return (ctrlReq(addr, ep, bmREQ_GET_DESCR, USB_REQUEST_GET_DESCRIPTOR, 0x00, USB_DESCRIPTOR_DEVICE, 0x0000, nbytes, nbytes, dataptr, 0));
+}
+
+/**
+ * \brief Get configuration descriptor.
+ *
+ * \param addr USB device address.
+ * \param ep USB device endpoint number.
+ * \param nbytes Buffer size.
+ * \param conf Configuration number.
+ * \param dataptr Buffer to store received descriptor.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::getConfDescr(uint32_t addr, uint32_t ep, uint32_t nbytes, uint32_t conf, uint8_t* dataptr)
+{
+	return (ctrlReq(addr, ep, bmREQ_GET_DESCR, USB_REQUEST_GET_DESCRIPTOR, conf, USB_DESCRIPTOR_CONFIGURATION, 0x0000, nbytes, nbytes, dataptr, 0));
+}
+
+/**
+ * \brief Get configuration descriptor and extract endpoints using USBReadParser object.
+ *
+ * \param addr USB device address.
+ * \param ep USB device endpoint number.
+ * \param conf Configuration number.
+ * \param p USBReadParser object pointer used to extract endpoints.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::getConfDescr(uint32_t addr, uint32_t ep, uint32_t conf, USBReadParser *p)
+{
+	const uint32_t bufSize = 64;
+	uint8_t buf[bufSize];
+
+	uint32_t ret = getConfDescr(addr, ep, 8, conf, buf);
+
+	if (ret)
+		return ret;
+
+	uint32_t total = ((USB_CONFIGURATION_DESCRIPTOR*)buf)->wTotalLength;
+	delay(100);
+
+    return (ctrlReq(addr, ep, bmREQ_GET_DESCR, USB_REQUEST_GET_DESCRIPTOR, conf, USB_DESCRIPTOR_CONFIGURATION, 0x0000, total, bufSize, buf, p));
+}
+
+/**
+ * \brief Get string descriptor.
+ *
+ * \param addr USB device address.
+ * \param ep USB device endpoint number.
+ * \param nbytes Buffer size.
+ * \param index String index.
+ * \param langid Language ID.
+ * \param dataptr Buffer to store received descriptor.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::getStrDescr(uint32_t addr, uint32_t ep, uint32_t nbytes, uint8_t index, uint16_t langid, uint8_t* dataptr)
+{
+    return (ctrlReq(addr, ep, bmREQ_GET_DESCR, USB_REQUEST_GET_DESCRIPTOR, index, USB_DESCRIPTOR_STRING, langid, nbytes, nbytes, dataptr, 0));
+}
+
+/**
+ * \brief Set USB device address.
+ *
+ * \param oldaddr Current USB device address.
+ * \param ep USB device endpoint number.
+ * \param addr New USB device address to be set.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::setAddr(uint32_t oldaddr, uint32_t ep, uint32_t newaddr)
+{
+	TRACE_USBHOST(printf("   => USBHost::setAddr\r\n");)
+    return ctrlReq(oldaddr, ep, bmREQ_SET, USB_REQUEST_SET_ADDRESS, newaddr, 0x00, 0x0000, 0x0000, 0x0000, 0, 0);
+}
+
+/**
+ * \brief Set configuration.
+ *
+ * \param addr USB device address.
+ * \param ep USB device endpoint number.
+ * \param conf_value New configuration value to be set.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+uint32_t USBHost::setConf(uint32_t addr, uint32_t ep, uint32_t conf_value)
+{
+    return (ctrlReq(addr, ep, bmREQ_SET, USB_REQUEST_SET_CONFIGURATION, conf_value, 0x00, 0x0000, 0x0000, 0x0000, 0, 0));
+}
+
+/**
+ * \brief USB main task, responsible for enumeration and clean up stage.
+ *
+ * \note Must be periodically called from loop().
+ */
+void USBHost::Task(void)
 {
 	uint32_t rcode = 0;
 	volatile uint32_t tmpdata = 0;
 	static uint32_t delay = 0;
-	//USB_DEVICE_DESCRIPTOR buf;
 	uint32_t lowspeed = 0;
 
-	// Update USB task state on Vbus change
+    // Update USB task state on Vbus change
 	tmpdata = UHD_GetVBUSState();
-
-	/* modify USB task state if Vbus changed */
-	switch (tmpdata)
+    switch (tmpdata)
 	{
-		case UHD_STATE_ERROR: //illegal state
-			usb_task_state = USB_DETACHED_SUBSTATE_ILLEGAL;
+        case UHD_STATE_ERROR:
+			// Illegal state
+            usb_task_state = USB_DETACHED_SUBSTATE_ILLEGAL;
 			lowspeed = 0;
-			break;
+            break;
 
-		case UHD_STATE_DISCONNECTED: // Disconnected state
-			if ((usb_task_state & USB_STATE_MASK) != USB_STATE_DETACHED)
-				usb_task_state = USB_DETACHED_SUBSTATE_INITIALIZE;
-			lowspeed = 0;
-			break;
+        case UHD_STATE_DISCONNECTED:
+			// Disconnected state
+            if ((usb_task_state & USB_STATE_MASK) != USB_STATE_DETACHED)
+			{
+                usb_task_state = USB_DETACHED_SUBSTATE_INITIALIZE;
+				lowspeed = 0;
+            }
+            break;
 
-		case UHD_STATE_CONNECTED: // Attached state
-			if ((usb_task_state & USB_STATE_MASK) == USB_STATE_DETACHED) {
-				delay = millis() + USB_SETTLE_DELAY;
-				usb_task_state = USB_ATTACHED_SUBSTATE_SETTLE;
-			}
-			break;
-	}// switch( tmpdata
+        case UHD_STATE_CONNECTED:
+			// Attached state
+            if ((usb_task_state & USB_STATE_MASK) == USB_STATE_DETACHED)
+			{
+                delay = millis() + USB_SETTLE_DELAY;
+                usb_task_state = USB_ATTACHED_SUBSTATE_SETTLE;
+				//FIXME TODO: lowspeed = 0 ou 1;  already done by hardware?
+            }
+            break;
+	}
 
 	// Poll connected devices (if required)
 	for (uint32_t i = 0; i < USB_NUMDEVICES; ++i)
@@ -500,37 +753,50 @@ void USBHost::Task(void) //USB state machine
 			rcode = devConfig[i]->Poll();
 
 	// Perform USB enumeration stage and clean up
-	switch (usb_task_state) {
-		case USB_DETACHED_SUBSTATE_INITIALIZE:
+    switch (usb_task_state)
+	{
+        case USB_DETACHED_SUBSTATE_INITIALIZE:
 			TRACE_USBHOST(printf(" + USB_DETACHED_SUBSTATE_INITIALIZE\r\n");)
 
 			// Init USB stack and driver
 			UHD_Init();
+            init();
 
 			// Free all USB resources
 			for (uint32_t i = 0; i < USB_NUMDEVICES; ++i)
-			if (devConfig[i])
-				rcode = devConfig[i]->Release();
+				if (devConfig[i])
+					rcode = devConfig[i]->Release();
 
-			usb_task_state = USB_DETACHED_SUBSTATE_WAIT_FOR_DEVICE;
-			break;
-		case USB_DETACHED_SUBSTATE_WAIT_FOR_DEVICE:  //just sit here
+            usb_task_state = USB_DETACHED_SUBSTATE_WAIT_FOR_DEVICE;
+            break;
+
+        case USB_DETACHED_SUBSTATE_WAIT_FOR_DEVICE:
 			// Nothing to do
-			break;
-		case USB_DETACHED_SUBSTATE_ILLEGAL:  //just sit here
+            break;
+
+        case USB_DETACHED_SUBSTATE_ILLEGAL:
 			// Nothing to do
-			break;
-		case USB_ATTACHED_SUBSTATE_SETTLE: // Settle time for just attached device
-			if((long)(millis() - delay) >= 0L)
-				usb_task_state = USB_ATTACHED_SUBSTATE_RESET_DEVICE;
-			break;
-		case USB_ATTACHED_SUBSTATE_RESET_DEVICE:
+            break;
+
+        case USB_ATTACHED_SUBSTATE_SETTLE:
+			// Settle time for just attached device
+            if (delay < millis())
+			{
+				TRACE_USBHOST(printf(" + USB_ATTACHED_SUBSTATE_SETTLE\r\n");)
+                usb_task_state = USB_ATTACHED_SUBSTATE_RESET_DEVICE;
+            }
+            break;
+
+        case USB_ATTACHED_SUBSTATE_RESET_DEVICE:
 			TRACE_USBHOST(printf(" + USB_ATTACHED_SUBSTATE_RESET_DEVICE\r\n");)
-			UHD_BusReset();  //issue bus reset
-			usb_task_state = USB_ATTACHED_SUBSTATE_WAIT_RESET_COMPLETE;
-			break;
-		case USB_ATTACHED_SUBSTATE_WAIT_RESET_COMPLETE:
-			if (Is_uhd_reset_sent())
+
+			// Trigger Bus Reset
+            UHD_BusReset();
+            usb_task_state = USB_ATTACHED_SUBSTATE_WAIT_RESET_COMPLETE;
+            break;
+
+        case USB_ATTACHED_SUBSTATE_WAIT_RESET_COMPLETE:
+            if (Is_uhd_reset_sent())
 			{
 				TRACE_USBHOST(printf(" + USB_ATTACHED_SUBSTATE_WAIT_RESET_COMPLETE\r\n");)
 
@@ -538,17 +804,18 @@ void USBHost::Task(void) //USB state machine
 				uhd_ack_reset_sent();
 
 				// Enable Start Of Frame generation
-				uhd_enable_sof();
+                uhd_enable_sof();
 
-				usb_task_state = USB_ATTACHED_SUBSTATE_WAIT_SOF;
+                usb_task_state = USB_ATTACHED_SUBSTATE_WAIT_SOF;
 
 				// Wait 20ms after Bus Reset (USB spec)
-				delay = millis() + 20;
-			}
-			break;
-		case USB_ATTACHED_SUBSTATE_WAIT_SOF:
+                delay = millis() + 20;
+            }
+            break;
+
+        case USB_ATTACHED_SUBSTATE_WAIT_SOF:
 			// Wait for SOF received first
-			if (Is_uhd_sof())
+            if (Is_uhd_sof())
 			{
 				if (delay < millis())
 				{
@@ -557,312 +824,33 @@ void USBHost::Task(void) //USB state machine
 					// 20ms waiting elapsed
 					usb_task_state = USB_STATE_CONFIGURING;
 				}
-			}
-			break;
-		case USB_STATE_CONFIGURING:
+            }
+            break;
+
+        case USB_STATE_CONFIGURING:
 			TRACE_USBHOST(printf(" + USB_STATE_CONFIGURING\r\n");)
 			rcode = Configuring(0, 0, lowspeed);
 
-			if (rcode) {
+			if (rcode)
+			{
 				TRACE_USBHOST(printf("/!\\ USBHost::Task : USB_STATE_CONFIGURING failed with code: %lu\r\n", rcode);)
-				if (rcode != USB_DEV_CONFIG_ERROR_DEVICE_INIT_INCOMPLETE) {
+				if (rcode != USB_DEV_CONFIG_ERROR_DEVICE_INIT_INCOMPLETE)
+				{
 					usb_error = rcode;
 					usb_task_state = USB_STATE_ERROR;
 				}
 			}
-			else {
+			else
+			{
 				usb_task_state = USB_STATE_RUNNING;
 				TRACE_USBHOST(printf(" + USB_STATE_RUNNING\r\n");)
 			}
-			break;
-		case USB_STATE_RUNNING:
-			break;
-		case USB_STATE_ERROR:
-			break;
-	} // switch( usb_task_state )
+            break;
+
+        case USB_STATE_RUNNING:
+            break;
+
+        case USB_STATE_ERROR:
+            break;
+    }
 }
-
-uint32_t USBHost::DefaultAddressing(uint32_t parent, uint32_t port, uint32_t lowspeed) {
-        //uint8_t		buf[12];
-	uint32_t rcode = 0;
-	UsbDeviceDefinition *p0 = NULL, *p = NULL;
-
-	// Get pointer to pseudo device with address 0 assigned
-	p0 = addrPool.GetUsbDevicePtr(0);
-
-	if(!p0)
-		return USB_ERROR_ADDRESS_NOT_FOUND_IN_POOL;
-
-	if(!p0->epinfo)
-		return USB_ERROR_EPINFO_IS_NULL;
-
-	p0->lowspeed = (lowspeed) ? 1 : 0;
-
-	// Allocate new address according to device class
-	uint32_t bAddress = addrPool.AllocAddress(parent, 0, port);
-
-	if(!bAddress)
-		return USB_ERROR_OUT_OF_ADDRESS_SPACE_IN_POOL;
-
-	p = addrPool.GetUsbDevicePtr(bAddress);
-
-	if(!p)
-		return USB_ERROR_ADDRESS_NOT_FOUND_IN_POOL;
-
-	p->lowspeed = lowspeed;
-
-	// Assign new address to the device
-	rcode = setAddr(0, 0, bAddress);
-
-	if(rcode) {
-		TRACE_USBHOST(printf("/!\\ USBHost::DefaultAddressing : Set address failed with code: %lu\r\n", rcode);)
-		addrPool.FreeAddress(bAddress);
-		bAddress = 0;
-		return rcode;
-	}
-	return 0;
-}
-
-uint32_t USBHost::AttemptConfig(uint32_t driver, uint32_t parent, uint32_t port, uint32_t lowspeed) {
-        //printf("AttemptConfig: parent = %i, port = %i\r\n", parent, port);
-        uint8_t retries = 0;
-
-again:
-        uint8_t rcode = devConfig[driver]->ConfigureDevice(parent, port, lowspeed);
-        if(rcode == USB_ERROR_CONFIG_REQUIRES_ADDITIONAL_RESET) {
-                if(parent == 0) {
-                        // Send a bus reset on the root interface.
-                        //regWr(rHCTL, bmBUSRST); //issue bus reset
-                        UHD_BusReset();
-                        delay(102); // delay 102ms, compensate for clock inaccuracy.
-                } else {
-                        // reset parent port
-                        devConfig[parent]->ResetHubPort(port);
-                }
-        } else if(rcode != 0x00/*hrJERR*/ && retries < 3) { // Some devices returns this when plugged in - trying to initialize the device again usually works
-                delay(100);
-                retries++;
-                goto again;
-        } else if(rcode)
-                return rcode;
-
-        rcode = devConfig[driver]->Init(parent, port, lowspeed);
-        if(rcode != 0x00/*hrJERR*/ && retries < 3) { // Some devices returns this when plugged in - trying to initialize the device again usually works
-                delay(100);
-                retries++;
-                goto again;
-        }
-        if(rcode) {
-                // Issue a bus reset, because the device may be in a limbo state
-                if(parent == 0) {
-                        // Send a bus reset on the root interface.
-                        //regWr(rHCTL, bmBUSRST); //issue bus reset
-                        UHD_BusReset();
-                        delay(102); // delay 102ms, compensate for clock inaccuracy.
-                } else {
-                        // reset parent port
-                        devConfig[parent]->ResetHubPort(port);
-                }
-        }
-        return rcode;
-}
-
-/*
- * This is broken. We need to enumerate differently.
- * It causes major problems with several devices if detected in an unexpected order.
- *
- *
- * Oleg - I wouldn't do anything before the newly connected device is considered sane.
- * i.e.(delays are not indicated for brevity):
- * 1. reset
- * 2. GetDevDescr();
- * 3a. If ACK, continue with allocating address, addressing, etc.
- * 3b. Else reset again, count resets, stop at some number (5?).
- * 4. When max.number of resets is reached, toggle power/fail
- * If desired, this could be modified by performing two resets with GetDevDescr() in the middle - however, from my experience, if a device answers to GDD()
- * it doesn't need to be reset again
- * New steps proposal:
- * 1: get address pool instance. exit on fail
- * 2: pUsb->getDevDescr(0, 0, constBufSize, (uint8_t*)buf). exit on fail.
- * 3: bus reset, 100ms delay
- * 4: set address
- * 5: pUsb->setEpInfoEntry(bAddress, 1, epInfo), exit on fail
- * 6: while (configurations) {
- *              for(each configuration) {
- *                      for (each driver) {
- *                              6a: Ask device if it likes configuration. Returns 0 on OK.
- *                                      If successful, the driver configured device.
- *                                      The driver now owns the endpoints, and takes over managing them.
- *                                      The following will need codes:
- *                                          Everything went well, instance consumed, exit with success.
- *                                          Instance already in use, ignore it, try next driver.
- *                                          Not a supported device, ignore it, try next driver.
- *                                          Not a supported configuration for this device, ignore it, try next driver.
- *                                          Could not configure device, fatal, exit with fail.
- *                      }
- *              }
- *    }
- * 7: for(each driver) {
- *      7a: Ask device if it knows this VID/PID. Acts exactly like 6a, but using VID/PID
- * 8: if we get here, no driver likes the device plugged in, so exit failure.
- *
- */
-uint32_t USBHost::Configuring(uint32_t parent, uint32_t port, uint32_t lowspeed) {
-       //uint32_t bAddress = 0;
-        //printf("Configuring: parent = %i, port = %i\r\n", parent, port);
-        uint32_t devConfigIndex;
-        uint32_t rcode = 0;
-        uint8_t buf[sizeof (USB_DEVICE_DESCRIPTOR)];
-        USB_DEVICE_DESCRIPTOR *udd = reinterpret_cast<USB_DEVICE_DESCRIPTOR *>(buf);
-        UsbDeviceDefinition *p = NULL;
-        EpInfo *oldep_ptr = NULL;
-        EpInfo epInfo;
-
-        epInfo.epAddr = 0;
-        epInfo.maxPktSize = 8;
-        epInfo.bmSndToggle = 0;
-        epInfo.bmRcvToggle = 0;
-        epInfo.bmNakPower = USB_NAK_MAX_POWER;
-
-        //delay(2000);
-        AddressPool &addrPool = GetAddressPool();
-        // Get pointer to pseudo device with address 0 assigned
-        p = addrPool.GetUsbDevicePtr(0);
-        if(!p) {
-                //printf("Configuring error: USB_ERROR_ADDRESS_NOT_FOUND_IN_POOL\r\n");
-                return USB_ERROR_ADDRESS_NOT_FOUND_IN_POOL;
-        }
-
-        // Save old pointer to EP_RECORD of address 0
-        oldep_ptr = p->epinfo;
-
-        // Temporary assign new pointer to epInfo to p->epinfo in order to
-        // avoid toggle inconsistence
-
-        p->epinfo = &epInfo;
-
-        p->lowspeed = lowspeed;
-        // Get device descriptor
-        rcode = getDevDescr(0, 0, sizeof (USB_DEVICE_DESCRIPTOR), (uint8_t*)buf);
-        // The first GetDescriptor give us the endpoint 0 max packet size.
-        epInfo.maxPktSize = buf[7];
-        // Restore p->epinfo
-        p->epinfo = oldep_ptr;
-
-        if(rcode) {
-                //printf("Configuring error: Can't get USB_DEVICE_DESCRIPTOR\r\n");
-                return rcode;
-        }
-
-        // to-do?
-        // Allocate new address according to device class
-        //bAddress = addrPool.AllocAddress(parent, false, port);
-
-        //if (!bAddress)
-        //        return USB_ERROR_OUT_OF_ADDRESS_SPACE_IN_POOL;
-        uint16_t vid = udd->idVendor;
-        uint16_t pid = udd->idProduct;
-        uint8_t klass = udd->bDeviceClass;
-
-        // Attempt to configure if VID/PID or device class matches with a driver
-        for(devConfigIndex = 0; devConfigIndex < USB_NUMDEVICES; devConfigIndex++) {
-                if(!devConfig[devConfigIndex]) continue; // no driver
-                if(devConfig[devConfigIndex]->GetAddress()) continue; // consumed
-                if(devConfig[devConfigIndex]->VIDPIDOK(vid, pid) || devConfig[devConfigIndex]->DEVCLASSOK(klass)) {
-                        rcode = AttemptConfig(devConfigIndex, parent, port, lowspeed);
-                        if(rcode != USB_DEV_CONFIG_ERROR_DEVICE_NOT_SUPPORTED)
-                                break;
-                }
-        }
-
-        if(devConfigIndex < USB_NUMDEVICES) {
-                return rcode;
-        }
-
-
-        // blindly attempt to configure
-        for(devConfigIndex = 0; devConfigIndex < USB_NUMDEVICES; devConfigIndex++) {
-                if(!devConfig[devConfigIndex]) continue;
-                if(devConfig[devConfigIndex]->GetAddress()) continue; // consumed
-                if(devConfig[devConfigIndex]->VIDPIDOK(vid, pid) || devConfig[devConfigIndex]->DEVCLASSOK(klass)) continue; // If this is true it means it must have returned USB_DEV_CONFIG_ERROR_DEVICE_NOT_SUPPORTED above
-                rcode = AttemptConfig(devConfigIndex, parent, port, lowspeed);
-
-                //printf("ERROR ENUMERATING %2.2x\r\n", rcode);
-                if(!(rcode == USB_DEV_CONFIG_ERROR_DEVICE_NOT_SUPPORTED || rcode == USB_ERROR_CLASS_INSTANCE_ALREADY_IN_USE)) {
-                        // in case of an error dev_index should be reset to 0
-                        //		in order to start from the very beginning the
-                        //		next time the program gets here
-                        //if (rcode != USB_DEV_CONFIG_ERROR_DEVICE_INIT_INCOMPLETE)
-                        //        devConfigIndex = 0;
-                        return rcode;
-                }
-	}
-        // if we get here that means that the device class is not supported by any of registered classes
-	rcode = DefaultAddressing(parent, port, lowspeed);
-
-	return rcode;
-}
-
-uint32_t USBHost::ReleaseDevice(uint32_t addr) {
-	if(!addr)
-		return 0;
-
-	for(uint32_t i = 0; i < USB_NUMDEVICES; i++) {
-                if(!devConfig[i]) continue;
-		if(devConfig[i]->GetAddress() == addr)
-			return devConfig[i]->Release();
-	}
-	return 0;
-}
-
-//get device descriptor
-
-uint32_t USBHost::getDevDescr(uint32_t addr, uint32_t ep, uint32_t nbytes, uint8_t* dataptr) {
-    return (ctrlReq(addr, ep, bmREQ_GET_DESCR, USB_REQUEST_GET_DESCRIPTOR, 0x00, USB_DESCRIPTOR_DEVICE, 0x0000, nbytes, nbytes, dataptr, 0));
-}
-//get configuration descriptor
-
-uint32_t USBHost::getConfDescr(uint32_t addr, uint32_t ep, uint32_t nbytes, uint32_t conf, uint8_t* dataptr) {
-	return (ctrlReq(addr, ep, bmREQ_GET_DESCR, USB_REQUEST_GET_DESCRIPTOR, conf, USB_DESCRIPTOR_CONFIGURATION, 0x0000, nbytes, nbytes, dataptr, 0));
-}
-
-/* Requests Configuration Descriptor. Sends two Get Conf Descr requests. The first one gets the total length of all descriptors, then the second one requests this
- total length. The length of the first request can be shorter ( 4 bytes ), however, there are devices which won't work unless this length is set to 9 */
-uint32_t USBHost::getConfDescr(uint32_t addr, uint32_t ep, uint32_t conf, USBReadParser *p) {
-	const uint32_t bufSize = 64;
-	uint8_t buf[bufSize];
-	USB_CONFIGURATION_DESCRIPTOR *ucd = reinterpret_cast<USB_CONFIGURATION_DESCRIPTOR *>(buf);
-
-	uint32_t ret = getConfDescr(addr, ep, 9, conf, buf);
-
-	if(ret)
-		return ret;
-
-        uint32_t total = ucd->wTotalLength;
-
-        //USBTRACE2("\r\ntotal conf.size:", total);
-
-        return (ctrlReq(addr, ep, bmREQ_GET_DESCR, USB_REQUEST_GET_DESCRIPTOR, conf, USB_DESCRIPTOR_CONFIGURATION, 0x0000, total, bufSize, buf, p));
-}
-
-//get string descriptor
-
-uint32_t USBHost::getStrDescr(uint32_t addr, uint32_t ep, uint32_t nbytes, uint32_t index, uint32_t langid, uint8_t* dataptr) {
-    return (ctrlReq(addr, ep, bmREQ_GET_DESCR, USB_REQUEST_GET_DESCRIPTOR, index, USB_DESCRIPTOR_STRING, langid, nbytes, nbytes, dataptr, 0));
-}
-//set address
-
-uint32_t USBHost::setAddr(uint32_t oldaddr, uint32_t ep, uint32_t newaddr) {
-        uint32_t rcode = ctrlReq(oldaddr, ep, bmREQ_SET, USB_REQUEST_SET_ADDRESS, newaddr, 0x00, 0x0000, 0x0000, 0x0000, NULL, NULL);
-        //delay(2); //per USB 2.0 sect.9.2.6.3
-        delay(300); // Older spec says you should wait at least 200ms
-        return rcode;
-        //return ( ctrlReq(oldaddr, ep, bmREQ_SET, USB_REQUEST_SET_ADDRESS, newaddr, 0x00, 0x0000, 0x0000, 0x0000, NULL, NULL));
-}
-//set configuration
-
-uint32_t USBHost::setConf(uint32_t addr, uint32_t ep, uint32_t conf_value) {
-        return ( ctrlReq(addr, ep, bmREQ_SET, USB_REQUEST_SET_CONFIGURATION, conf_value, 0x00, 0x0000, 0x0000, 0x0000, NULL, NULL));
-}
-
-//#endif //ARDUINO_SAMD_ZERO

@@ -14,14 +14,16 @@ Circuits At Home, LTD
 Web      :  http://www.circuitsathome.com
 e-mail   :  support@circuitsathome.com
 */
-#if !defined(__HID_H__)
-#define __HID_H__
 
+#ifndef HID_H_INCLUDED
+#define HID_H_INCLUDED
+
+#include <stdint.h>
+#include "usb_ch9.h"
 #include "Usb.h"
+#include "Arduino.h"
+#include "confdescparser.h"
 #include "hidusagestr.h"
-
-#define MAX_REPORT_PARSERS			2
-#define HID_MAX_HID_CLASS_DESCRIPTORS		5
 
 #define DATA_SIZE_MASK           0x03
 #define TYPE_MASK                0x0C
@@ -93,6 +95,16 @@ e-mail   :  support@circuitsathome.com
 #define HID_PROTOCOL_KEYBOARD       0x01
 #define HID_PROTOCOL_MOUSE          0x02
 
+/**
+ * \brief HidItemPrefix definition.
+ */
+struct HidItemPrefix				// Not used
+{
+	uint8_t		bSize : 2;
+	uint8_t		bType : 2;
+	uint8_t		bTag  : 4;
+};
+
 #define HID_ITEM_TYPE_MAIN							0
 #define HID_ITEM_TYPE_GLOBAL						1
 #define HID_ITEM_TYPE_LOCAL							2
@@ -116,13 +128,11 @@ e-mail   :  support@circuitsathome.com
 #define HID_MAIN_ITEM_COLLECTION_USAGE_SWITCH		5
 #define HID_MAIN_ITEM_COLLECTION_USAGE_MODIFIER		6
 
-struct HidItemPrefix {
-	uint8_t		bSize : 2;
-	uint8_t		bType : 2;
-	uint8_t		bTag  : 4;
-};
-
-struct MainItemIOFeature {
+/**
+ * \brief MainItemIOFeature definition.
+ */
+struct MainItemIOFeature			// Not used
+{
 	uint8_t		bmIsConstantOrData			: 1;
 	uint8_t		bmIsArrayOrVariable			: 1;
 	uint8_t		bmIsRelativeOrAbsolute		: 1;
@@ -135,12 +145,25 @@ struct MainItemIOFeature {
 
 class HID;
 
-class HIDReportParser {
+/**
+ * \class Abstract HIDReportParser definition.
+ *
+ * \note This class is used to implement HID report parsing.
+ */
+class HIDReportParser
+{
 public:
-	virtual void Parse(HID *hid, uint32_t is_rpt_id, uint32_t len, uint8_t *buf)= 0;
+	virtual void Parse(HID *hid, bool is_rpt_id, uint32_t len, uint8_t *buf) = 0;
 };
 
-class HID : public USBDeviceConfig, public UsbConfigXtracter {
+#define MAX_REPORT_PARSERS					2
+#define HID_MAX_HID_CLASS_DESCRIPTORS		5
+
+/**
+ * \class HID definition.
+ */
+class HID : public USBDeviceConfig, public UsbConfigXtracter
+{
 protected:
 	USBHost		*pUsb;					// USB class instance pointer
 	uint32_t	bAddress;				// address
@@ -156,28 +179,24 @@ protected:
 	void PrintEndpointDescriptor(const USB_ENDPOINT_DESCRIPTOR* ep_ptr);
 	void PrintHidDescriptor(const USB_HID_DESCRIPTOR *pDesc);
 
-	virtual HIDReportParser* GetReportParser(uint32_t id);
+	virtual HIDReportParser* GetReportParser(uint32_t id) { return 0; };
 
 public:
+	HID(USBHost *pusb) : pUsb(pusb) {};
 
-	HID(USBHost *pusb) : pUsb(pusb) {
-	};
-
-	const USBHost* GetUsb() {
-		return pUsb; 
-	};
-	virtual uint32_t SetReportParser(uint32_t id, HIDReportParser *prs);
+	const USBHost* GetUsb() { return pUsb; };
+	virtual bool SetReportParser(uint32_t id, HIDReportParser *prs) { return false; };
 
 	uint32_t SetProtocol(uint32_t iface, uint32_t protocol);
-	uint32_t GetProtocol(uint32_t iface, uint8_t* dataptr);
-	uint32_t GetIdle(uint32_t iface, uint32_t reportID, uint8_t* dataptr);
-	uint32_t SetIdle(uint32_t iface, uint32_t reportID, uint32_t duration);
+    uint32_t GetProtocol(uint32_t iface, uint8_t* dataptr);
+    uint32_t GetIdle(uint32_t iface, uint32_t reportID, uint8_t* dataptr);
+    uint32_t SetIdle(uint32_t iface, uint32_t reportID, uint32_t duration);
 
-	uint32_t GetReportDescr(uint32_t ep, USBReadParser *parser = NULL);
+    uint32_t GetReportDescr(uint32_t ep, USBReadParser *parser = NULL);
 
-	uint32_t GetHidDescr(uint32_t ep, uint32_t nbytes, uint8_t* dataptr);
-	uint32_t GetReport(uint32_t ep, uint32_t iface, uint32_t report_type, uint32_t report_id, uint32_t nbytes, uint8_t* dataptr);
-	uint32_t SetReport(uint32_t ep, uint32_t iface, uint32_t report_type, uint32_t report_id, uint32_t nbytes, uint8_t* dataptr);
+    uint32_t GetHidDescr(uint32_t ep, uint32_t nbytes, uint8_t* dataptr);
+    uint32_t GetReport(uint32_t ep, uint32_t iface, uint32_t report_type, uint32_t report_id, uint32_t nbytes, uint8_t* dataptr);
+    uint32_t SetReport(uint32_t ep, uint32_t iface, uint32_t report_type, uint32_t report_id, uint32_t nbytes, uint8_t* dataptr);
 };
 
-#endif // __HID_H__
+#endif /* HID_H_INCLUDED */

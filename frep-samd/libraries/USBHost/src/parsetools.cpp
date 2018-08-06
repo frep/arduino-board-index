@@ -14,32 +14,37 @@ Circuits At Home, LTD
 Web      :  http://www.circuitsathome.com
 e-mail   :  support@circuitsathome.com
 */
-#include "Usb.h"
 
-bool MultiByteValueParser::Parse(uint8_t **pp, uint32_t *pcntdn) {
-        if(!pBuf) {
-                Notify(PSTR("Buffer pointer is NULL!\r\n"), 0x80);
+#include "parsetools.h"
+
+bool MultiByteValueParser::Parse(uint8_t **pp, uint32_t *pcntdn)
+{
+	if (!pBuf)
+	{
+		//Notify(PSTR("Buffer pointer is NULL!\r\n"));
 		return false;
 	}
 	for (; countDown && (*pcntdn); countDown--, (*pcntdn)--, (*pp)++)
-		pBuf[valueSize - countDown] = (**pp);
+		pBuf[valueSize-countDown] = (**pp);
 
-        if(countDown)
+	if (countDown)
 		return false;
 
 	countDown = valueSize;
 	return true;
 }
 
-bool PTPListParser::Parse(uint8_t **pp, uint32_t *pcntdn, PTP_ARRAY_EL_FUNC pf, const void *me) {
-        switch(nStage) {
+bool PTPListParser::Parse(uint8_t **pp, uint32_t *pcntdn, PTP_ARRAY_EL_FUNC pf, const void *me)
+{
+	switch (nStage)
+	{
 	case 0:
 		pBuf->valueSize = lenSize;
 		theParser.Initialize(pBuf);
 		nStage = 1;
 
 	case 1:
-		if(!theParser.Parse(pp, pcntdn))
+		if (!theParser.Parse(pp, pcntdn))
 			return false;
 
 		arLen = 0;
@@ -53,11 +58,12 @@ bool PTPListParser::Parse(uint8_t **pp, uint32_t *pcntdn, PTP_ARRAY_EL_FUNC pf, 
 		nStage = 3;
 
 	case 3:
-                for(; arLenCntdn; arLenCntdn--) {
-			if(!theParser.Parse(pp, pcntdn))
+		for (; arLenCntdn; arLenCntdn--)
+		{
+			if (!theParser.Parse(pp, pcntdn))
 				return false;
 
-			if(pf)
+			if (pf)
 				pf(pBuf, (arLen - arLenCntdn), me);
 		}
 

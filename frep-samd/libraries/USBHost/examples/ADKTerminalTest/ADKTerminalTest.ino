@@ -1,75 +1,65 @@
 /*
-  Copyright (c) 2012 Arduino.  All right reserved.
 
-  This library is free software; you can redistribute it and/or
-  modify it under the terms of the GNU Lesser General Public
-  License as published by the Free Software Foundation; either
-  version 2.1 of the License, or (at your option) any later version.
+ ADK Terminal Test
 
-  This library is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the GNU Lesser General Public License for more details.
+ This demonstrates USB Host connectivity between an
+ Android phone and an Arduino Due.
 
-  You should have received a copy of the GNU Lesser General Public
-  License along with this library; if not, write to the Free Software
-  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ The ADK for the Arduino Due is a work in progress
+ For additional information on the Arduino ADK visit
+ http://labs.arduino.cc/ADK/Index
+
+ created 27 June 2012
+ by Cristian Maglie
+
 */
 
-#define ARDUINO_MAIN
-//#include "variant.h"
-#include "Arduino.h" 
+#include "variant.h"
 #include <stdio.h>
 #include <adk.h>
 
+// Accessory descriptor. It's how Arduino identifies itself to Android.
+char applicationName[] = "Arduino_Terminal"; // the app on your phone
+char accessoryName[] = "Arduino Due"; // your Arduino board
+char companyName[] = "Arduino SA";
 
-USBHost usb;
-ADK adk(&usb,"Arduino SA",
-            "Arduino_Terminal",
-            "Arduino Terminal for Android",
-            "1.0",
-            "http://labs.arduino.cc/uploads/ADK/ArduinoTerminal/ThibaultTerminal_ICS_0001.apk",
-            "1");
+// Make up anything you want for these
+char versionNumber[] = "1.0";
+char serialNumber[] = "1";
+char url[] = "http://labs.arduino.cc/uploads/ADK/ArduinoTerminal/ThibaultTerminal_ICS_0001.apk";
 
-void setup(void)
-{
-  SERIAL_PORT_MONITOR.begin( 115200 );
-  while (!SERIAL_PORT_MONITOR); // Wait for serial port to connect - used on Leonardo, Teensy and other boards with built-in USB CDC serial connection
-  SERIAL_PORT_MONITOR.println("\r\nADK demo start");
+USBHost Usb;
+ADK adk(&Usb, companyName, applicationName, accessoryName, versionNumber, url, serialNumber);
 
-  if (usb.Init() == -1)
-	SERIAL_PORT_MONITOR.println("OSC did not start.");
-
-  delay(20);
+void setup() {
+  cpu_irq_enable();
+  printf("\r\nADK demo start\r\n");
+  delay(200);
 }
 
 #define RCVSIZE 128
 
-void loop(void)
-{
-	uint8_t buf[RCVSIZE];
-	uint32_t nbread = 0;
-	char helloworld[] = "Hello World!\r\n";
+void loop() {
+  uint8_t buf[RCVSIZE];
+  uint32_t nbread = 0;
+  char helloworld[] = "Hello World!\r\n";
 
-	usb.Task();
+  Usb.Task();
 
-	if( adk.isReady() == false ) {
-		return;
-	}
-	/* Write hello string to ADK */
-	adk.SndData(strlen(helloworld), (uint8_t *)helloworld);
+  if (adk.isReady()) {
+    /* Write hello string to ADK */
+    adk.write(strlen(helloworld), (uint8_t *)helloworld);
 
-	delay(1000);
+    delay(1000);
 
-	/* Read data from ADK and print to UART */
-	adk.RcvData((uint8_t *)&nbread, buf);
-	if (nbread > 0)
-	{
-		SERIAL_PORT_MONITOR.print("RCV: ");
-		for (uint32_t i = 0; i < nbread; ++i)
-		{
-			SERIAL_PORT_MONITOR.print((char)buf[i]);
-		}
-		SERIAL_PORT_MONITOR.print("\r\n");
-	}	
+    /* Read data from ADK and print to UART */
+    adk.read(&nbread, RCVSIZE, buf);
+    if (nbread > 0) {
+      printf("RCV: ");
+      for (uint32_t i = 0; i < nbread; ++i) {
+        printf("%c", (char)buf[i]);
+      }
+      printf("\r\n");
+    }
+  }
 }

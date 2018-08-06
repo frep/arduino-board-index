@@ -21,28 +21,25 @@ e-mail   :  support@circuitsathome.com
 #define ADK_H_INCLUDED
 
 #include <stdint.h>
+#include "usb_ch9.h"
 #include "Usb.h"
 #include "hid.h"
 #include "Arduino.h"
+#include "confdescparser.h"
 
-// #define ADK_VID   0x18D1
-// #define ADK_PID   0x2D00
-// #define ADB_PID   0x2D01
-
-// JCB
-#define ADK_VID   0x04E8
-#define ADK_PID   0x685C
-#define ADB_PID   0x685D
+#define ADK_VID   0x18D1
+#define ADK_PID   0x2D00
+#define ADB_PID   0x2D01
 
 #define XOOM  //enables repeating getProto() and getConf() attempts
               //necessary for slow devices such as Motorola XOOM
               //defined by default, can be commented out to save memory
 
-/* requests */
+/* Requests */
 
-#define ADK_GETPROTO      51  //check USB accessory protocol version  0x33
-#define ADK_SENDSTR       52  //send identifying string               0x34
-#define ADK_ACCSTART      53  //start device in accessory mode        0x35
+#define ADK_GETPROTO      51  //check USB accessory protocol version
+#define ADK_SENDSTR       52  //send identifying string
+#define ADK_ACCSTART      53  //start device in accessory mode
 
 #define bmREQ_ADK_GET     USB_SETUP_DEVICE_TO_HOST|USB_SETUP_TYPE_VENDOR|USB_SETUP_RECIPIENT_DEVICE
 #define bmREQ_ADK_SEND    USB_SETUP_HOST_TO_DEVICE|USB_SETUP_TYPE_VENDOR|USB_SETUP_RECIPIENT_DEVICE
@@ -56,9 +53,11 @@ e-mail   :  support@circuitsathome.com
 
 #define ADK_MAX_ENDPOINTS 3 //endpoint 0, bulk_IN, bulk_OUT
 
-class ADK;
-
-class ADK : public USBDeviceConfig, public UsbConfigXtracter {
+/**
+ * \class ADK definition.
+ */
+class ADK : public USBDeviceConfig, public UsbConfigXtracter
+{
 private:
 	/* ID strings */
 	const char* manufacturer;
@@ -83,66 +82,69 @@ protected:
 	uint32_t	bConfNum;							// configuration number
 
 	uint32_t	bNumEP;								// total number of EP in the configuration
-	uint32_t	ready;
+	bool		ready;
 
-        /* Endpoint data structure */
+	/* Endpoint data structure describing the device EP */
 	EpInfo		epInfo[ADK_MAX_ENDPOINTS];
 
-        void PrintEndpointDescriptor(const USB_ENDPOINT_DESCRIPTOR* ep_ptr);
-
 public:
-        ADK(USBHost *pUsb, const char* manufacturer,
-                const char* model,
-                const char* description,
-                const char* version,
-                const char* uri,
-                const char* serial);
+	ADK(USBHost *pUsb, const char* pmanufacturer,
+                  const char* pmodel,
+                  const char* pdescription,
+                  const char* pversion,
+                  const char* puri,
+                  const char* pserial);
 
 	// Methods for receiving and sending data
-	uint32_t RcvData(uint8_t *nbytesptr, uint8_t *dataptr);
-	uint32_t SndData(uint32_t nbytes, uint8_t *dataptr);
+	uint32_t read(uint32_t *nreadbytes, uint32_t datalen, uint8_t *dataptr);
+	uint32_t write(uint32_t datalen, uint8_t *dataptr);
 
 
 	// USBDeviceConfig implementation
-        virtual uint32_t ConfigureDevice(uint32_t parent, uint32_t port, uint32_t lowspeed);
-        virtual uint32_t Init(uint32_t parent, uint32_t port, uint32_t lowspeed);
-        virtual uint32_t Release();
+	virtual uint32_t Init(uint32_t parent, uint32_t port, uint32_t lowspeed);
+	virtual uint32_t Release();
+	virtual uint32_t Poll() { return 0; };	// not implemented
+	virtual uint32_t GetAddress() { return bAddress; };
+	virtual bool isReady() { return ready; };
 
-        virtual uint32_t Poll() {
-                return 0;
-        };
-
-	virtual uint32_t GetAddress() {
-              return bAddress;
-        };
-
-	virtual uint32_t isReady() {
-              return ready;
-        };
-
-        virtual uint32_t VIDPIDOK(uint32_t vid, uint32_t pid) {
-                return (vid == ADK_VID && (pid == ADK_PID || pid == ADB_PID));
-        };
-
-	//UsbConfigXtracter implementation
+	// UsbConfigXtracter implementation
 	virtual void EndpointXtract(uint32_t conf, uint32_t iface, uint32_t alt, uint32_t proto, const USB_ENDPOINT_DESCRIPTOR *ep);
-}; //class ADK : public USBDeviceConfig ...
+};
 
-/* get ADK protocol version */
-
-/* returns 2 bytes in *adkproto */
-inline uint32_t ADK::getProto(uint8_t* adkproto) {
-        return ( pUsb->ctrlReq(bAddress, 0, bmREQ_ADK_GET, ADK_GETPROTO, 0, 0, 0, 2, 2, adkproto, NULL));
+/**
+ * \brief Get ADK protocol version.
+ *
+ * \param adkproto Empty buffer to be filled by getProto (2 bytes) with the ADK
+ * protocol version value.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+inline uint32_t ADK::getProto(uint8_t* adkproto)
+{
+	return (pUsb->ctrlReq(bAddress, 0, bmREQ_ADK_GET, ADK_GETPROTO, 0, 0, 0, 2, 2, adkproto, NULL));
 }
 
-/* send ADK string */
-inline uint32_t ADK::sendStr(uint32_t index, const char* str) {
-        return ( pUsb->ctrlReq(bAddress, 0, bmREQ_ADK_SEND, ADK_SENDSTR, 0, 0, index, strlen(str) + 1, strlen(str) + 1, (uint8_t*)str, NULL));
+/**
+ * \brief Send ADK string.
+ *
+ * \param index String index.
+ * \param str String to send.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+inline uint32_t ADK::sendStr(uint32_t index, const char* str)
+{
+	return (pUsb->ctrlReq(bAddress, 0, bmREQ_ADK_SEND, ADK_SENDSTR, 0, 0, index, strlen(str) + 1, strlen(str) + 1, (uint8_t*)str, NULL));
 }
 
-/* switch to accessory mode */
-inline uint32_t ADK::switchAcc(void) {
-        return ( pUsb->ctrlReq(bAddress, 0, bmREQ_ADK_SEND, ADK_ACCSTART, 0, 0, 0, 0, 0, NULL, NULL));
+/**
+ * \brief Send a switch to accessory mode request.
+ *
+ * \return 0 on success, error code otherwise.
+ */
+inline uint32_t ADK::switchAcc(void)
+{
+	return (pUsb->ctrlReq(bAddress, 0, bmREQ_ADK_SEND, ADK_ACCSTART, 0, 0, 0, 0, 0, NULL, NULL));
 }
 
 #endif /* ADK_H_INCLUDED */

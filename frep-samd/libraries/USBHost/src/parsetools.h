@@ -15,34 +15,31 @@ Web      :  http://www.circuitsathome.com
 e-mail   :  support@circuitsathome.com
 */
 
-#if !defined(_usb_h_) || defined(__PARSETOOLS_H__)
-#error "Never include parsetools.h directly; include Usb.h instead"
-#else
-#define __PARSETOOLS_H__
+#ifndef PARSETOOLS_H_INCLUDED
+#define PARSETOOLS_H_INCLUDED
 
 #include <stdint.h>
-//#include "Arduino.h"
+#include "Arduino.h"
 
-struct MultiValueBuffer {
+struct MultiValueBuffer
+{
 	uint8_t		valueSize;
 	void		*pValue;
 };
 
-class MultiByteValueParser {
+class MultiByteValueParser
+{
 	uint8_t				*pBuf;
 	uint32_t			countDown;
 	uint32_t			valueSize;
 
 public:
+	MultiByteValueParser() : pBuf(NULL), countDown(0), valueSize(0) {};
 
-        MultiByteValueParser() : pBuf(NULL), countDown(0), valueSize(0) {
-        };
+	const uint8_t* GetBuffer() { return pBuf; };
 
-        const uint8_t* GetBuffer() {
-                return pBuf;
-        };
-
-	void Initialize(MultiValueBuffer * const pbuf) {
+	void Initialize(MultiValueBuffer * const pbuf)
+	{
 		pBuf = (uint8_t*)pbuf->pValue;
 		countDown = valueSize = pbuf->valueSize;
 	};
@@ -50,31 +47,33 @@ public:
 	bool Parse(uint8_t **pp, uint32_t *pcntdn);
 };
 
-class ByteSkipper {
+class ByteSkipper
+{
 	uint8_t				*pBuf;
 	uint32_t			nStage;
 	uint32_t			countDown;
 
 public:
+	ByteSkipper() : pBuf(NULL), nStage(0), countDown(0) {};
 
-	ByteSkipper() : pBuf(NULL), nStage(0), countDown(0) {
-        };
-
-	void Initialize(MultiValueBuffer *pbuf) {
+	void Initialize(MultiValueBuffer *pbuf)
+	{
 		pBuf = (uint8_t*)pbuf->pValue;
 		countDown = 0;
 	};
 
-	bool Skip(uint8_t **pp, uint32_t *pcntdn, uint32_t bytes_to_skip) {
-                switch(nStage) {
-                       case 0:
-                                countDown = bytes_to_skip;
-                                nStage++;
-                        case 1:
-                                for(; countDown && (*pcntdn); countDown--, (*pp)++, (*pcntdn)--);
+	bool Skip(uint8_t **pp, uint32_t *pcntdn, uint32_t bytes_to_skip)
+	{
+		switch (nStage)
+		{
+		case 0:
+			countDown = bytes_to_skip;
+			nStage ++;
+		case 1:
+			for (; countDown && (*pcntdn); countDown--, (*pp)++, (*pcntdn)--);
 
-                                if(!countDown)
-                                        nStage = 0;
+			if (!countDown)
+				nStage = 0;
 		};
 		return (!countDown);
 	};
@@ -83,12 +82,10 @@ public:
 // Pointer to a callback function triggered for each element of PTP array when used with PTPArrayParser
 typedef void (*PTP_ARRAY_EL_FUNC)(const MultiValueBuffer * const p, uint32_t count, const void *me);
 
-class PTPListParser {
+class PTPListParser
+{
 public:
-
-        enum ParseMode {
-                modeArray, modeRange/*, modeEnum*/
-        };
+	enum ParseMode { modeArray, modeRange/*, modeEnum*/ };
 
 private:
 	uint32_t				nStage;
@@ -108,7 +105,6 @@ private:
 	uint32_t /*ParseMode*/	prsMode;
 
 public:
-
 	PTPListParser() :
 		nStage(0),
 		enStage(0),
@@ -117,19 +113,23 @@ public:
 		lenSize(0),
 		valSize(0),
 		pBuf(NULL),
-		prsMode(modeArray) {
-                };
+		prsMode(modeArray)
+		{};
 
-	void Initialize(const uint32_t len_size, const uint32_t val_size, MultiValueBuffer * const p, const uint32_t mode = modeArray) {
+	void Initialize(const uint32_t len_size, const uint32_t val_size, MultiValueBuffer * const p, const uint32_t mode = modeArray)
+	{
 		pBuf	= p;
 		lenSize	= len_size;
 		valSize = val_size;
 		prsMode = mode;
 
-		if(prsMode == modeRange) {
+		if (prsMode == modeRange)
+		{
 			arLenCntdn = arLen = 3;
 			nStage = 2;
-		} else {
+		}
+		else
+		{
 			arLenCntdn = arLen = 0;
 			nStage = 0;
 		}
@@ -140,4 +140,4 @@ public:
 	bool Parse(uint8_t **pp, uint32_t *pcntdn, PTP_ARRAY_EL_FUNC pf, const void *me = NULL);
 };
 
-#endif // __PARSETOOLS_H__
+#endif /* PARSETOOLS_H_INCLUDED */
