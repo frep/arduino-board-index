@@ -123,22 +123,6 @@
 		  "url": "https://raw.github.com/frep/arduino-board-index/master/boards/frep-samd-0.1.0.zip",
           "toolsDependencies": [],
           "size": "1542484"
-        },
-		        {
-          "boards": [
-            {
-              "name": "switchM0D"
-            }
-          ],
-          "architecture": "samd",
-          "name": "frep's SAMD Boards",
-          "category": "Contributed",
-          "version": "0.2.0",
-          "archiveFileName": "frep-samd-0.2.0.zip",
-          "checksum": "SHA-256:dadc4a7e5594eab707cf10b2420fac18cb7f2481dfec8c76288fa8544f09e324",
-		  "url": "https://raw.github.com/frep/arduino-board-index/master/boards/frep-samd-0.2.0.zip",
-          "toolsDependencies": [],
-          "size": "1501919"
         }
       ]
     }
