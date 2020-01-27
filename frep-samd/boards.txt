@@ -45,3 +45,34 @@ frep_switchM0D.build.vid=0x239A
 frep_switchM0D.build.pid=0x801E
 frep_switchM0D.bootloader.tool=openocd
 frep_switchM0D.bootloader.file=switchM0D/bootloader_uf2.bin
+
+# RADIOPI
+# -------
+frep_radioPi.name=radioPi
+frep_radioPi.vid.0=0x239A
+frep_radioPi.pid.0=0x801E
+frep_radioPi.vid.1=0x239A
+frep_radioPi.pid.1=0x001E
+frep_radioPi.upload.tool=bossac
+frep_radioPi.upload.protocol=sam-ba
+frep_radioPi.upload.maximum_size=262144
+frep_radioPi.upload.offset=0x2000
+frep_radioPi.upload.use_1200bps_touch=true
+frep_radioPi.upload.wait_for_upload_port=true
+frep_radioPi.upload.native_usb=true
+frep_radioPi.build.mcu=cortex-m0plus
+frep_radioPi.build.f_cpu=48000000L
+frep_radioPi.build.usb_product="Trinket M0"
+frep_radioPi.build.usb_manufacturer="Adafruit"
+frep_radioPi.build.board=TRINKET_M0
+frep_radioPi.build.core=arduino
+frep_radioPi.build.extra_flags=-DCRYSTALLESS -D__SAMD21G18A__ -DARM_MATH_CM0PLUS {build.usb_flags}
+frep_radioPi.build.ldscript=linker_scripts/gcc/flash_with_bootloader.ld
+frep_radioPi.build.openocdscript=openocd_scripts/radioPi.cfg
+frep_radioPi.build.variant=radioPi
+frep_radioPi.build.variant_system_lib=
+frep_radioPi.build.vid=0x239A
+frep_radioPi.build.pid=0x801E
+frep_radioPi.bootloader.tool=openocd
+frep_radioPi.bootloader.file=radioPi/bootloader_uf2.bin
+
